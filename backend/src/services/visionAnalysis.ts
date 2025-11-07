@@ -4,7 +4,62 @@ import axios from 'axios';
 import { analyzeScreenshotWithYandex } from './yandexVisionService';
 import { analyzeScreenshotWithHuggingFace } from './huggingFaceVisionService';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
-import { universalVisionAnalysisPrompt } from './prompts/visionAnalysisPrompt.js';
+import { freeFormAnalysisPrompt } from './prompts/visionAnalysisPrompt.js';
+
+/**
+ * Проверяет, является ли описание страницей с капчей/защитой от роботов
+ * Использует строгие фразы, чтобы избежать ложных срабатываний
+ */
+function isCaptchaPage(description: string): boolean {
+  // Только конкретные фразы, связанные именно с капчей
+  const captchaPhrases = [
+    'i\'m not a robot',
+    'i am not a robot',
+    'please confirm that you are not a robot',
+    'подтвердите, что вы не робот',
+    'обнаружена страница с защитой от роботов',
+    'не удалось получить доступ к содержимому сайта',
+    'recaptcha',
+    'hcaptcha',
+    're-captcha',
+    'h-captcha',
+    'google captcha',
+    'cloudflare challenge',
+    'cloudflare проверка',
+    'verify you are human',
+    'подтвердите что вы человек',
+  ];
+  
+  const descriptionLower = description.toLowerCase();
+  
+  // Проверяем только полные фразы, а не отдельные слова
+  // Это исключает ложные срабатывания на словах "robot", "verify", "проверить" в обычных описаниях
+  return captchaPhrases.some(phrase => descriptionLower.includes(phrase));
+}
+
+/**
+ * Возвращает стандартный ответ для страницы с капчей
+ */
+function getCaptchaResponse(): VisionAnalysisResult {
+  return {
+    issues: [],
+    suggestions: [{
+      title: 'Не удалось выполнить проверку',
+      description: 'На скриншоте обнаружена страница с защитой от роботов (капча, reCAPTCHA, hCaptcha или форма подтверждения). Система не может автоматически обойти защиту для анализа содержимого сайта.',
+      impact: 'Невозможно провести полноценный UX/UI анализ сайта',
+      priority: 'high',
+      steps: [
+        'Попробуйте использовать другой URL страницы (например, главную страницу вместо внутренней)',
+        'Временно отключите защиту от роботов для тестирования',
+        'Используйте прямую ссылку на страницу без редиректов',
+        'Проверьте, не блокирует ли сайт автоматизированные запросы через User-Agent',
+        'Попробуйте проанализировать сайт позже, когда защита может быть временно отключена',
+      ],
+    }],
+    overallScore: 0,
+    visualDescription: 'Обнаружена страница с защитой от роботов (капча/подтверждение). Не удалось получить доступ к содержимому сайта для анализа.',
+  };
+}
 
 /**
  * Преобразует объект visualDescription в связный текстовый анализ
@@ -171,11 +226,20 @@ export interface VisionAnalysisIssue {
   impact?: string;
 }
 
+export interface VisionAnalysisSuggestion {
+  title?: string;
+  description?: string;
+  impact?: string;
+  priority?: 'high' | 'medium' | 'low';
+  steps?: string[];
+}
+
 export interface VisionAnalysisResult {
   issues: string[] | VisionAnalysisIssue[]; // Поддерживаем оба формата для обратной совместимости
-  suggestions: string[];
+  suggestions: string[] | VisionAnalysisSuggestion[]; // Может быть массивом строк или объектов
   overallScore: number;
   visualDescription?: string; // Описание того, что видит система на скриншоте
+  freeFormAnalysis?: string; // Свободный анализ для summary
 }
 
 async function analyzeWithGoogleVision(screenshotBase64: string): Promise<VisionAnalysisResult> {
@@ -1066,6 +1130,12 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
           console.warn('⚠️  Ошибка при парсинге JSON, используем текстовый ответ');
         }
         
+        // Проверяем, не является ли это страницей с капчей
+        if (isCaptchaPage(description)) {
+          console.warn('⚠️  Обнаружена страница с капчей/защитой от роботов');
+          return getCaptchaResponse();
+        }
+        
         // Убеждаемся, что visualDescription - строка
         let visualDescription = description;
         if (parsed.visualDescription) {
@@ -1109,12 +1179,14 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
             ? Math.max(0, Math.min(100, parsed.overallScore))
             : 75,
           visualDescription: visualDescription,
+          freeFormAnalysis: hf.freeFormAnalysis || undefined, // Сохраняем свободный анализ, если есть
         };
         
         console.log('✅ Hugging Face Router API анализ успешен');
         console.log('   Найдено проблем:', result.issues.length);
         console.log('   Рекомендаций:', result.suggestions.length);
         console.log('   Оценка:', result.overallScore);
+        console.log('   Свободный анализ:', result.freeFormAnalysis ? `есть (${result.freeFormAnalysis.length} символов)` : 'отсутствует');
         
         return result;
       }
@@ -1140,6 +1212,12 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
   const ya = await analyzeScreenshotWithYandex(screenshotBase64);
   if (ya.success) {
     console.log('✅ Получен ответ от Yandex AI Studio');
+    
+    // Проверяем, не является ли это страницей с капчей
+    if (isCaptchaPage(ya.description)) {
+      console.warn('⚠️  Обнаружена страница с капчей/защитой от роботов (Yandex)');
+      return getCaptchaResponse();
+    }
     
     // Пытаемся распарсить JSON из ответа Yandex
     let parsed: Partial<VisionAnalysisResult> = {};
@@ -1245,7 +1323,7 @@ async function analyzeWithOpenAI(screenshotBase64: string): Promise<VisionAnalys
           content: [
             {
               type: 'text',
-              text: universalVisionAnalysisPrompt,
+              text: freeFormAnalysisPrompt,
             },
             {
               type: 'image_url',
@@ -1256,13 +1334,19 @@ async function analyzeWithOpenAI(screenshotBase64: string): Promise<VisionAnalys
           ],
         },
       ],
-      max_tokens: 1000,
-      temperature: 0.7,
+      max_tokens: 6000, // Увеличено для развернутого анализа
+      temperature: 0.8,
     });
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
       throw new Error('No response from OpenAI');
+    }
+
+    // Проверяем, не является ли это страницей с капчей
+    if (isCaptchaPage(content)) {
+      console.warn('⚠️  Обнаружена страница с капчей/защитой от роботов (OpenAI)');
+      return getCaptchaResponse();
     }
 
     // Try to parse JSON from response

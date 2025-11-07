@@ -1,6 +1,6 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-import { universalVisionAnalysisPrompt } from './prompts/visionAnalysisPrompt.js';
+import { freeFormAnalysisPrompt } from './prompts/visionAnalysisPrompt.js';
 
 dotenv.config();
 
@@ -55,8 +55,8 @@ export async function analyzeScreenshotWithYandex(base64Image: string): Promise<
       modelUri: `gpt://${folderId}/${model}`,
       completionOptions: {
         stream: false,
-        temperature: 0.3,
-        maxTokens: 2000,
+        temperature: 0.8,
+        maxTokens: 6000, // Увеличено для развернутого анализа
       },
       messages: [
         {
@@ -64,7 +64,7 @@ export async function analyzeScreenshotWithYandex(base64Image: string): Promise<
           content: [
             {
               type: 'text',
-              text: universalVisionAnalysisPrompt,
+              text: freeFormAnalysisPrompt,
             },
             {
               type: 'image_url',

@@ -17,6 +17,13 @@ export interface AuditReport {
   };
   // Детальный отчет
   detailedReport?: DetailedReport;
+  // Общее резюме по UX/UI
+  summary?: {
+    overallScore: number;
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+  };
 }
 
 export interface DetailedReport {
@@ -153,6 +160,7 @@ export interface ReportCategory {
   name: string;
   severity: 'error' | 'warning' | 'info';
   issues: Issue[];
+  score?: number; // Оценка категории от 0 до 100
 }
 
 export interface Issue {
@@ -161,6 +169,10 @@ export interface Issue {
   severity: 'error' | 'warning' | 'info';
   element?: string;
   suggestion?: string;
+  bbox?: [number, number, number, number]; // [x1, y1, x2, y2] координаты проблемной области
+  recommendation?: string; // Рекомендация по исправлению
+  priority?: 'Critical' | 'High' | 'Medium' | 'Low'; // Приоритет проблемы
+  impact?: string; // Влияние на метрики
 }
 
 export interface Recommendation {
@@ -184,6 +196,7 @@ export interface SiteMetrics {
 export interface FontSizeAnalysis {
   minSize: number;
   maxSize: number;
+  mainTextSize?: number; // Размер основного текста (параграфов), отдельно от заголовков
   issues: string[];
 }
 

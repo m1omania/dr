@@ -47,6 +47,7 @@ async function analyzeFontSizes(page: Page): Promise<FontSizeAnalysis> {
   const fontData = await page.evaluate(() => {
     const allElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span, div, a, button, input, textarea, label');
     const fontSizes: number[] = [];
+    const bodyTextSizes: number[] = []; // Только для элементов <p> (основной текст)
     
     allElements.forEach((el) => {
       const computedStyle = window.getComputedStyle(el);
@@ -56,15 +57,27 @@ async function analyzeFontSizes(page: Page): Promise<FontSizeAnalysis> {
         const size = parseFloat(fontSize);
         if (!isNaN(size) && size > 0) {
           fontSizes.push(size);
+          // Для основного текста анализируем только параграфы
+          if (el.tagName === 'P' || (el.tagName === 'SPAN' && !el.closest('h1, h2, h3, h4, h5, h6'))) {
+            bodyTextSizes.push(size);
+          }
         }
       }
     });
 
-    return fontSizes;
+    return {
+      all: fontSizes,
+      bodyText: bodyTextSizes.length > 0 ? bodyTextSizes : fontSizes, // Fallback если нет <p>
+    };
   });
 
-  const minSize = fontData.length > 0 ? Math.min(...fontData) : 16;
-  const maxSize = fontData.length > 0 ? Math.max(...fontData) : 16;
+  const minSize = fontData.all.length > 0 ? Math.min(...fontData.all) : 16;
+  const maxSize = fontData.all.length > 0 ? Math.max(...fontData.all) : 16;
+  // Основной размер текста - медиана размеров параграфов или среднее значение
+  const bodyTextSize = fontData.bodyText.length > 0 
+    ? fontData.bodyText.reduce((a, b) => a + b, 0) / fontData.bodyText.length 
+    : 16;
+  
   const issues: string[] = [];
 
   if (minSize < 12) {
@@ -78,6 +91,7 @@ async function analyzeFontSizes(page: Page): Promise<FontSizeAnalysis> {
   return {
     minSize: minSize || 16,
     maxSize: maxSize || 16,
+    mainTextSize: Math.round(bodyTextSize) || 16, // Добавляем размер основного текста
     issues,
   };
 }

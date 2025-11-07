@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "UX Audit Service",
-  description: "Автоматический UX-аудит сайтов",
+  title: "Дизайн ревью",
+  description: "UX/UI аудит вашего сайта или изображения",
 };
 
 export default function RootLayout({

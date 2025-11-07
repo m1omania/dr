@@ -13,6 +13,12 @@ export interface AuditReport {
         mobile: string;
     };
     detailedReport?: DetailedReport;
+    summary?: {
+        overallScore: number;
+        summary: string;
+        strengths: string[];
+        weaknesses: string[];
+    };
 }
 export interface DetailedReport {
     executiveSummary: ExecutiveSummary;
@@ -131,6 +137,7 @@ export interface ReportCategory {
     name: string;
     severity: 'error' | 'warning' | 'info';
     issues: Issue[];
+    score?: number;
 }
 export interface Issue {
     title: string;
@@ -138,6 +145,10 @@ export interface Issue {
     severity: 'error' | 'warning' | 'info';
     element?: string;
     suggestion?: string;
+    bbox?: [number, number, number, number];
+    recommendation?: string;
+    priority?: 'Critical' | 'High' | 'Medium' | 'Low';
+    impact?: string;
 }
 export interface Recommendation {
     title: string;
@@ -158,6 +169,7 @@ export interface SiteMetrics {
 export interface FontSizeAnalysis {
     minSize: number;
     maxSize: number;
+    mainTextSize?: number;
     issues: string[];
 }
 export interface ContrastAnalysis {
