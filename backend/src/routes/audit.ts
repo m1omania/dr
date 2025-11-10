@@ -5,11 +5,70 @@ import { analyzeScreenshot } from '../services/visionAnalysis.js';
 import { generateReport } from '../services/reportGenerator.js';
 import { getDb, initDatabase } from '../../database/db.js';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
+import { existsSync } from 'fs';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 
 const router = Router();
 
 // Initialize database on first request
 let dbInitialized = false;
+
+/**
+ * Находит путь к Chrome на Render
+ */
+function findChromePath(): string | null {
+  // Если указан явный путь, используем его
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  // Пробуем найти Chrome в кеше Puppeteer на Render
+  const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+  const chromeCachePath = join(cacheDir, 'chrome');
+  
+  if (existsSync(chromeCachePath)) {
+    try {
+      // Ищем папку с версией Chrome (например, linux-127.0.6533.88)
+      const versions = readdirSync(chromeCachePath);
+      for (const version of versions) {
+        if (version.startsWith('linux-')) {
+          // Пробуем разные варианты структуры папок
+          const possiblePaths = [
+            join(chromeCachePath, version, 'chrome-linux64', 'chrome'),
+            join(chromeCachePath, version, 'chrome-linux', 'chrome'),
+            join(chromeCachePath, version, 'chrome', 'chrome'),
+          ];
+          
+          for (const path of possiblePaths) {
+            if (existsSync(path)) {
+              console.log('✅ Найден Chrome по пути:', path);
+              return path;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️  Не удалось найти Chrome в кеше:', error);
+    }
+  }
+
+  // Пробуем стандартные пути
+  const standardPaths = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ];
+
+  for (const path of standardPaths) {
+    if (existsSync(path)) {
+      console.log('✅ Найден Chrome по стандартному пути:', path);
+      return path;
+    }
+  }
+
+  return null;
+}
 
 router.post('/', async (req, res) => {
   let browser: Browser | null = null;
@@ -111,9 +170,10 @@ router.post('/', async (req, res) => {
           // На Render добавляем --single-process
           if (process.env.NODE_ENV === 'production') {
             resizeLaunchOptions.args.push('--single-process');
-            const puppeteerChrome = process.env.PUPPETEER_EXECUTABLE_PATH;
-            if (puppeteerChrome) {
-              resizeLaunchOptions.executablePath = puppeteerChrome;
+            const chromePath = findChromePath();
+            if (chromePath) {
+              resizeLaunchOptions.executablePath = chromePath;
+              console.log('🔧 Использую Chrome по пути (для уменьшения изображения):', chromePath);
             }
           }
 
@@ -304,21 +364,13 @@ router.post('/', async (req, res) => {
       // Добавляем --single-process только для production (Render)
       launchOptions.args.push('--single-process');
       
-      // Если Chrome установлен через puppeteer, используем его
-      const puppeteerChrome = process.env.PUPPETEER_EXECUTABLE_PATH;
-      if (puppeteerChrome) {
-        launchOptions.executablePath = puppeteerChrome;
+      // Пробуем найти Chrome
+      const chromePath = findChromePath();
+      if (chromePath) {
+        launchOptions.executablePath = chromePath;
+        console.log('🔧 Использую Chrome по пути:', chromePath);
       } else {
-        // Пробуем найти Chrome в стандартных местах на Render
-        const chromePaths = [
-          '/opt/render/project/src/backend/node_modules/.cache/puppeteer/chrome/linux-*/chrome-linux/chrome',
-          '/usr/bin/google-chrome',
-          '/usr/bin/chromium-browser',
-          '/usr/bin/chromium',
-        ];
-        
-        // Puppeteer должен найти Chrome автоматически, но можно указать явно
-        // Оставляем пустым - puppeteer найдет сам
+        console.warn('⚠️  Chrome не найден, Puppeteer попытается найти его автоматически');
       }
     }
 
