@@ -20,7 +20,7 @@ initDatabase().catch((error) => {
 });
 
 const app = express();
-const PORT = process.env.PORT || 4001;
+const PORT = parseInt(process.env.PORT || '4001', 10);
 
 // CORS configuration - поддерживает несколько origins
 const allowedOrigins = process.env.CORS_ORIGIN 
