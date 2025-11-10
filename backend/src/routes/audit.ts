@@ -4,7 +4,7 @@ import { parseHTML } from '../services/htmlParser.js';
 import { analyzeScreenshot } from '../services/visionAnalysis.js';
 import { generateReport } from '../services/reportGenerator.js';
 import { getDb, initDatabase } from '../../database/db.js';
-import puppeteer from 'puppeteer';
+import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 const router = Router();
 
@@ -12,8 +12,8 @@ const router = Router();
 let dbInitialized = false;
 
 router.post('/', async (req, res) => {
-  let browser: puppeteer.Browser | null = null;
-  let page: puppeteer.Page | null = null;
+  let browser: Browser | null = null;
+  let page: Page | null = null;
 
   try {
     const { url, image } = req.body;

@@ -86,7 +86,9 @@ export function generateReport(input: ReportGenerationInput): AuditReport {
   });
   
   // Логируем общее количество issues с координатами
-  const issuesWithBbox = visionIssues.filter(i => i.bbox && Array.isArray(i.bbox) && i.bbox.length === 4);
+  const issuesWithBbox = visionIssues.filter((i): i is typeof i & { bbox: [number, number, number, number] } => {
+    return typeof i !== 'string' && 'bbox' in i && i.bbox !== undefined && Array.isArray(i.bbox) && i.bbox.length === 4;
+  });
   console.log('📊 Всего issues с координатами bbox:', issuesWithBbox.length, 'из', visionIssues.length);
   
   // Используем только issues от AI
@@ -256,7 +258,7 @@ function generateDetailedReport(
     observations: [
       // Add visual description as first observation if available
       ...(visionAnalysis.visualDescription ? [`👁️ Что видит система: ${visionAnalysis.visualDescription}`] : []),
-      ...visionAnalysis.suggestions,
+      ...visionAnalysis.suggestions.map(s => typeof s === 'string' ? s : s.title || s.description || ''),
     ],
   };
   

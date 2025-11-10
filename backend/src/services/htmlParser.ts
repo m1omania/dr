@@ -223,7 +223,7 @@ async function checkResponsiveElements(page: Page): Promise<boolean> {
           const sheet = stylesheets[i];
           const rules = Array.from(sheet.cssRules || []);
           for (let j = 0; j < rules.length; j++) {
-            const rule = rules[j];
+            const rule = rules[j] as any;
             if (rule.mediaText || (rule.style && (rule.style.display === 'flex' || rule.style.display === 'grid'))) {
               hasResponsiveCSS = true;
               break;
