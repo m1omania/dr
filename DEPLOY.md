@@ -11,10 +11,10 @@
    - **Name:** `ux-audit-backend`
    - **Region:** выберите ближайший
    - **Branch:** `main`
-   - **Root Directory:** оставьте пустым (или `backend` если Render требует)
+   - **Root Directory:** `backend` ⚠️ ВАЖНО!
    - **Environment:** `Node`
-   - **Build Command:** `cd backend && npm install && npm run build`
-   - **Start Command:** `cd backend && npm start`
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm start`
    - **Plan:** Free (или выберите нужный)
 
 5. В разделе "Environment Variables" добавьте:
