@@ -441,33 +441,69 @@ router.post('/', async (req, res) => {
     const startTime = Date.now();
 
     // Увеличиваем таймаут для медленных сайтов и используем более мягкую стратегию ожидания
-    await page.goto(normalizedUrl, {
-      waitUntil: 'domcontentloaded', // Используем domcontentloaded для быстрой загрузки
-      timeout: 60000, // Увеличиваем таймаут до 60 секунд для медленных сайтов
-    }).catch(async (error) => {
-      // Если domcontentloaded не сработал, пробуем более мягкую стратегию
+    // Для очень медленных сайтов используем более мягкую стратегию сразу
+    let pageLoaded = false;
+    let loadError: any = null;
+    
+    // Стратегия 1: Пробуем domcontentloaded (быстро, но может не сработать для медленных сайтов)
+    try {
+      console.log('📡 Пробую загрузить страницу с domcontentloaded (таймаут 45 сек)...');
+      await page.goto(normalizedUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000,
+      });
+      pageLoaded = true;
+      console.log('✅ Страница загружена с domcontentloaded');
+    } catch (error: any) {
+      loadError = error;
       if (error.name === 'TimeoutError') {
         console.warn('⚠️  Таймаут при загрузке с domcontentloaded, пробую load...');
-        try {
-          await page.goto(normalizedUrl, {
-            waitUntil: 'load',
-            timeout: 60000,
-          });
-        } catch (loadError) {
-          // Если и load не сработал, пробуем вообще без ожидания
-          console.warn('⚠️  Таймаут при загрузке с load, пробую без ожидания...');
-          await page.goto(normalizedUrl, {
-            waitUntil: 'networkidle0',
-            timeout: 90000, // Еще больше таймаут для networkidle0
-          }).catch(() => {
-            // Если ничего не помогло, просто продолжаем - страница может быть частично загружена
-            console.warn('⚠️  Не удалось дождаться полной загрузки, продолжаю с частично загруженной страницей');
-          });
-        }
       } else {
-        throw error; // Пробрасываем другие ошибки
+        console.warn('⚠️  Ошибка при загрузке с domcontentloaded:', error.message);
       }
-    });
+    }
+    
+    // Стратегия 2: Если domcontentloaded не сработал, пробуем load
+    if (!pageLoaded) {
+      try {
+        console.log('📡 Пробую загрузить страницу с load (таймаут 60 сек)...');
+        await page.goto(normalizedUrl, {
+          waitUntil: 'load',
+          timeout: 60000,
+        });
+        pageLoaded = true;
+        console.log('✅ Страница загружена с load');
+      } catch (error: any) {
+        loadError = error;
+        if (error.name === 'TimeoutError') {
+          console.warn('⚠️  Таймаут при загрузке с load, пробую commit...');
+        } else {
+          console.warn('⚠️  Ошибка при загрузке с load:', error.message);
+        }
+      }
+    }
+    
+    // Стратегия 3: Если load не сработал, пробуем commit (самый мягкий вариант)
+    if (!pageLoaded) {
+      try {
+        console.log('📡 Пробую загрузить страницу с commit (таймаут 90 сек)...');
+        await page.goto(normalizedUrl, {
+          waitUntil: 'commit', // commit - самый мягкий вариант, ждет только начала загрузки
+          timeout: 90000,
+        });
+        pageLoaded = true;
+        console.log('✅ Страница загружена с commit (частично)');
+      } catch (error: any) {
+        loadError = error;
+        console.warn('⚠️  Не удалось загрузить страницу даже с commit, продолжаю с тем что есть...');
+        // Продолжаем работу - возможно страница частично загружена
+      }
+    }
+    
+    // Если ничего не помогло, выбрасываем ошибку
+    if (!pageLoaded && loadError) {
+      throw loadError;
+    }
     const loadTime = Date.now() - startTime;
     // Wait for page to stabilize
     await new Promise(resolve => setTimeout(resolve, 1000));
