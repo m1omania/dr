@@ -14,8 +14,13 @@ let browserInstance: Browser | null = null;
  * Находит путь к Chrome на Render
  */
 function findChromePath(): string | null {
+  console.log('🔍 Ищу Chrome...');
+  console.log('   PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH || 'не установлен');
+  console.log('   PUPPETEER_CACHE_DIR:', process.env.PUPPETEER_CACHE_DIR || 'не установлен');
+  
   // Если указан явный путь, используем его
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    console.log('✅ Использую явный путь:', process.env.PUPPETEER_EXECUTABLE_PATH);
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
@@ -23,12 +28,18 @@ function findChromePath(): string | null {
   const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
   const chromeCachePath = join(cacheDir, 'chrome');
   
+  console.log('   Проверяю путь к кешу:', chromeCachePath);
+  console.log('   Путь существует:', existsSync(chromeCachePath));
+  
   if (existsSync(chromeCachePath)) {
     try {
       // Ищем папку с версией Chrome (например, linux-127.0.6533.88)
       const versions = readdirSync(chromeCachePath);
+      console.log('   Найдено версий Chrome:', versions.length, versions);
+      
       for (const version of versions) {
         if (version.startsWith('linux-')) {
+          console.log('   Проверяю версию:', version);
           // Пробуем разные варианты структуры папок
           const possiblePaths = [
             join(chromeCachePath, version, 'chrome-linux64', 'chrome'),
@@ -37,6 +48,8 @@ function findChromePath(): string | null {
           ];
           
           for (const path of possiblePaths) {
+            console.log('     Проверяю путь:', path);
+            console.log('     Существует:', existsSync(path));
             if (existsSync(path)) {
               console.log('✅ Найден Chrome по пути:', path);
               return path;
@@ -45,8 +58,14 @@ function findChromePath(): string | null {
         }
       }
     } catch (error) {
-      console.warn('⚠️  Не удалось найти Chrome в кеше:', error);
+      console.error('❌ Ошибка при поиске Chrome в кеше:', error);
+      if (error instanceof Error) {
+        console.error('   Message:', error.message);
+        console.error('   Stack:', error.stack?.substring(0, 200));
+      }
     }
+  } else {
+    console.warn('⚠️  Путь к кешу Chrome не существует:', chromeCachePath);
   }
 
   // Пробуем стандартные пути
@@ -56,6 +75,7 @@ function findChromePath(): string | null {
     '/usr/bin/chromium',
   ];
 
+  console.log('   Проверяю стандартные пути...');
   for (const path of standardPaths) {
     if (existsSync(path)) {
       console.log('✅ Найден Chrome по стандартному пути:', path);
@@ -63,6 +83,7 @@ function findChromePath(): string | null {
     }
   }
 
+  console.warn('⚠️  Chrome не найден ни в одном из проверенных мест');
   return null;
 }
 
