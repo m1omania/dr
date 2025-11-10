@@ -127,7 +127,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 3. Настройки:
    - **Name:** `ux-audit-backend`
    - **Environment:** Node
-   - **Build Command:** `cd backend && npm install && npm run build`
+   - **Build Command:** `cd backend && npm install && PUPPETEER_SKIP_DOWNLOAD=false npx puppeteer browsers install chrome && npm run build`
    - **Start Command:** `cd backend && npm start`
    - **Plan:** Free (или выберите нужный)
 4. Установите переменные окружения:
