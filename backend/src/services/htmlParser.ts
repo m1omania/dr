@@ -1,5 +1,5 @@
 import type { Page } from 'puppeteer';
-import type { SiteMetrics, FontSizeAnalysis, ContrastAnalysis, CTAAnalysis } from '../../../shared/types.js';
+import type { SiteMetrics, FontSizeAnalysis, ContrastAnalysis, CTAAnalysis } from '../types.js';
 
 export async function parseHTML(page: Page, loadTime: number): Promise<SiteMetrics> {
   // Get page metrics using Puppeteer

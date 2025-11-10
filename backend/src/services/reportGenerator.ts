@@ -19,7 +19,7 @@ import type {
   ActionPlan,
   ActionItem,
   CTADescription,
-} from '../../../shared/types.js';
+} from '../types.js';
 import type { VisionAnalysisResult, VisionAnalysisIssue } from './visionAnalysis.js';
 import { v4 as uuidv4 } from 'uuid';
 
