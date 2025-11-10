@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Используем серверную переменную окружения (без NEXT_PUBLIC_) для безопасности
 // NEXT_PUBLIC_API_URL используется только для клиентской части (если нужно)
-const BACKEND_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://53893873b619.vps.myjino.ru:4001';
+// Важно: используем URL без :4001, так как перенаправление портов настроено в панели Jino.ru
+const BACKEND_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://53893873b619.vps.myjino.ru';
 
 export async function POST(request: NextRequest) {
   try {
