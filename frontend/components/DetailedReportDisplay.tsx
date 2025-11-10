@@ -1,6 +1,6 @@
 'use client';
 
-import type { DetailedReport } from '../../shared/types';
+import type { DetailedReport } from '../src/types';
 import { useState } from 'react';
 
 interface DetailedReportDisplayProps {
