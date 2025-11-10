@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import { analyzeScreenshotWithHuggingFace } from './huggingFaceVisionService';
+import { analyzeScreenshotWithHuggingFace } from './huggingFaceVisionService.js';
 import { freeFormAnalysisPrompt } from './prompts/visionAnalysisPrompt.js';
 
 /**
