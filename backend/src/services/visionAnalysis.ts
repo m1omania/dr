@@ -917,6 +917,13 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
   
   // Пробуем сначала Hugging Face Router API (работает отлично с Qwen2.5-VL-32B)
   const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_TOKEN;
+  console.log('   Проверка API ключей:');
+  console.log('     HF_TOKEN:', process.env.HF_TOKEN ? 'установлен' : 'не установлен');
+  console.log('     HUGGINGFACE_API_KEY:', process.env.HUGGINGFACE_API_KEY ? 'установлен' : 'не установлен');
+  console.log('     HUGGINGFACE_TOKEN:', process.env.HUGGINGFACE_TOKEN ? 'установлен' : 'не установлен');
+  console.log('     OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'установлен' : 'не установлен');
+  console.log('     hfToken найден:', hfToken ? 'да' : 'нет');
+  
   if (hfToken) {
     console.log('🔄 Пробуем Hugging Face Router API (основной метод)...');
     try {
