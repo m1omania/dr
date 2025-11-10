@@ -440,9 +440,33 @@ router.post('/', async (req, res) => {
     // Get page metrics and HTML
     const startTime = Date.now();
 
+    // Увеличиваем таймаут для медленных сайтов и используем более мягкую стратегию ожидания
     await page.goto(normalizedUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000, // Увеличиваем таймаут до 30 секунд
+      waitUntil: 'domcontentloaded', // Используем domcontentloaded для быстрой загрузки
+      timeout: 60000, // Увеличиваем таймаут до 60 секунд для медленных сайтов
+    }).catch(async (error) => {
+      // Если domcontentloaded не сработал, пробуем более мягкую стратегию
+      if (error.name === 'TimeoutError') {
+        console.warn('⚠️  Таймаут при загрузке с domcontentloaded, пробую load...');
+        try {
+          await page.goto(normalizedUrl, {
+            waitUntil: 'load',
+            timeout: 60000,
+          });
+        } catch (loadError) {
+          // Если и load не сработал, пробуем вообще без ожидания
+          console.warn('⚠️  Таймаут при загрузке с load, пробую без ожидания...');
+          await page.goto(normalizedUrl, {
+            waitUntil: 'networkidle0',
+            timeout: 90000, // Еще больше таймаут для networkidle0
+          }).catch(() => {
+            // Если ничего не помогло, просто продолжаем - страница может быть частично загружена
+            console.warn('⚠️  Не удалось дождаться полной загрузки, продолжаю с частично загруженной страницей');
+          });
+        }
+      } else {
+        throw error; // Пробрасываем другие ошибки
+      }
     });
     const loadTime = Date.now() - startTime;
     // Wait for page to stabilize
@@ -790,6 +814,19 @@ router.post('/', async (req, res) => {
         error: 'AI service unavailable',
         message: error.message,
         hint: 'Проверьте настройки API ключей (HUGGINGFACE_API_KEY или OPENAI_API_KEY) в переменных окружения Render Dashboard. Также убедитесь, что сервисы доступны (нет таймаутов или ошибок сети).',
+      });
+    }
+    
+    // Если это ошибка таймаута навигации
+    if (error instanceof Error && 
+        (error.name === 'TimeoutError' || 
+         error.message.includes('Navigation timeout') ||
+         error.message.includes('timeout of') ||
+         error.message.includes('exceeded'))) {
+      return res.status(504).json({
+        error: 'Navigation timeout',
+        message: 'Сайт не загрузился за отведенное время. Возможно, сайт медленно загружается или недоступен.',
+        hint: 'Попробуйте проанализировать сайт позже или используйте другой URL. Для очень медленных сайтов может потребоваться больше времени.',
       });
     }
     
