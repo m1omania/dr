@@ -556,12 +556,24 @@ router.post('/', async (req, res) => {
         await page.setViewport({ width: width, height: 1080 });
         await new Promise(resolve => setTimeout(resolve, 500)); // Даем время на перерисовку
         
-        const screenshot = await page.screenshot({
+        const screenshotOptions: any = {
           type: 'jpeg',
           quality: minQuality,
-          fullPage: true, // ВСЕГДА полная страница, даже при уменьшенном разрешении
           encoding: 'base64',
-        }) as string;
+        };
+        
+        if (shouldClip) {
+          screenshotOptions.clip = {
+            x: 0,
+            y: 0,
+            width: width,
+            height: screenshotHeight,
+          };
+        } else {
+          screenshotOptions.fullPage = true;
+        }
+        
+        const screenshot = await page.screenshot(screenshotOptions) as string;
         
         // Восстанавливаем viewport
         await page.setViewport({ width: 1920, height: 1080 });
