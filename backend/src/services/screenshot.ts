@@ -25,6 +25,43 @@ function findChromePath(): string | null {
   }
 
   // Пробуем найти Chrome в кеше Puppeteer на Render
+  // Сначала проверяем директорию проекта (сохраняется между build и runtime)
+  const projectCacheDir = '/opt/render/project/src/backend/.local-chromium';
+  const projectChromePath = join(projectCacheDir, 'chrome');
+  
+  console.log('   Проверяю путь к Chrome в проекте:', projectChromePath);
+  console.log('   Путь существует:', existsSync(projectChromePath));
+  
+  if (existsSync(projectChromePath)) {
+    try {
+      const versions = readdirSync(projectChromePath);
+      console.log('   Найдено версий Chrome в проекте:', versions.length, versions);
+      
+      for (const version of versions) {
+        if (version.startsWith('linux-')) {
+          console.log('   Проверяю версию:', version);
+          const possiblePaths = [
+            join(projectChromePath, version, 'chrome-linux64', 'chrome'),
+            join(projectChromePath, version, 'chrome-linux', 'chrome'),
+            join(projectChromePath, version, 'chrome', 'chrome'),
+          ];
+          
+          for (const path of possiblePaths) {
+            console.log('     Проверяю путь:', path);
+            console.log('     Существует:', existsSync(path));
+            if (existsSync(path)) {
+              console.log('✅ Найден Chrome по пути:', path);
+              return path;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Ошибка при поиске Chrome в проекте:', error);
+    }
+  }
+  
+  // Затем проверяем переменную окружения PUPPETEER_CACHE_DIR
   const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
   const chromeCachePath = join(cacheDir, 'chrome');
   

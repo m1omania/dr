@@ -3,7 +3,7 @@ services:
     name: ux-audit-backend
     env: node
     plan: free
-    buildCommand: cd backend && npm install && PUPPETEER_SKIP_DOWNLOAD=false npx puppeteer browsers install chrome && npm run build
+    buildCommand: cd backend && npm install && PUPPETEER_SKIP_DOWNLOAD=false PUPPETEER_CACHE_DIR=/opt/render/project/src/backend/.local-chromium npx puppeteer browsers install chrome && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -13,7 +13,7 @@ services:
       - key: DATABASE_PATH
         value: /opt/render/project/src/database.sqlite
       - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/.cache/puppeteer
+        value: /opt/render/project/src/backend/.local-chromium
       # Добавьте эти переменные вручную в Render Dashboard:
       # - OPENAI_API_KEY (опционально)
       # - HUGGINGFACE_API_KEY (рекомендуется)
