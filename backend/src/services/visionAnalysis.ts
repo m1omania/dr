@@ -916,8 +916,13 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
   console.log('   Длина screenshot:', screenshotBase64?.length || 0);
   
   // Пробуем сначала Hugging Face Router API (работает отлично с Qwen2.5-VL-32B)
-  const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_TOKEN;
+  // Проверяем все возможные варианты названий переменных
+  const hfToken = process.env.HF || 
+                 process.env.HF_TOKEN || 
+                 process.env.HUGGINGFACE_API_KEY || 
+                 process.env.HUGGINGFACE_TOKEN;
   console.log('   Проверка API ключей:');
+  console.log('     HF:', process.env.HF ? 'установлен' : 'не установлен');
   console.log('     HF_TOKEN:', process.env.HF_TOKEN ? 'установлен' : 'не установлен');
   console.log('     HUGGINGFACE_API_KEY:', process.env.HUGGINGFACE_API_KEY ? 'установлен' : 'не установлен');
   console.log('     HUGGINGFACE_TOKEN:', process.env.HUGGINGFACE_TOKEN ? 'установлен' : 'не установлен');
@@ -1063,7 +1068,7 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
   }
   
   // Если все fallback не сработали, выбрасываем ошибку вместо мокового отчета
-  const hasHfKey = !!(process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_TOKEN);
+  const hasHfKey = !!(process.env.HF || process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_TOKEN);
   const hasOpenAIKey = !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here');
   
   console.log('❌ Все сервисы vision анализа недоступны');

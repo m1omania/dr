@@ -17,7 +17,11 @@ export interface HuggingFaceAnalyzeResult {
  * 2. Структурирование в JSON с bbox
  */
 export async function analyzeScreenshotWithHuggingFace(base64Image: string): Promise<HuggingFaceAnalyzeResult> {
-  const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_TOKEN;
+  // Проверяем все возможные варианты названий переменных
+  const hfToken = process.env.HF || 
+                 process.env.HF_TOKEN || 
+                 process.env.HUGGINGFACE_API_KEY || 
+                 process.env.HUGGINGFACE_TOKEN;
 
   if (!hfToken) {
     console.error('❌ Hugging Face не настроен: отсутствует токен');
