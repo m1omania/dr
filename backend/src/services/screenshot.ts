@@ -199,7 +199,42 @@ async function getBrowser(): Promise<Browser> {
         console.warn('⚠️  Chrome не найден, Puppeteer попытается найти его автоматически');
       }
     } else if (isVPS) {
-      // На VPS больше ресурсов, не нужен --single-process
+      // На VPS оптимизируем для снижения нагрузки на CPU и память
+      // Добавляем флаги для снижения потребления ресурсов
+      launchOptions.args.push(
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-features=TranslateUI',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--memory-pressure-off', // Отключаем управление памятью
+        '--max_old_space_size=512', // Ограничиваем память до 512MB
+      );
+      
+      // Если ресурсов мало (2GB RAM), используем --single-process
+      // Это снизит нагрузку, но может быть медленнее
+      const useSingleProcess = process.env.USE_SINGLE_PROCESS === 'true';
+      if (useSingleProcess) {
+        launchOptions.args.push('--single-process');
+        console.log('🔧 Использую --single-process для снижения нагрузки');
+      }
+      
       // Пробуем найти Chrome в стандартных местах или через Puppeteer
       const chromePath = findChromePath();
       if (chromePath) {
@@ -211,7 +246,26 @@ async function getBrowser(): Promise<Browser> {
       }
     }
 
-    browserInstance = await puppeteer.launch(launchOptions);
+    try {
+      browserInstance = await puppeteer.launch(launchOptions);
+      
+      // Обрабатываем закрытие браузера
+      browserInstance.on('disconnected', () => {
+        console.warn('⚠️  Browser disconnected, resetting instance');
+        browserInstance = null;
+      });
+      
+      // Обрабатываем ошибки браузера
+      browserInstance.process()?.on('error', (error) => {
+        console.error('❌ Browser process error:', error);
+        browserInstance = null;
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to launch browser:', error);
+      browserInstance = null;
+      throw error;
+    }
   }
   return browserInstance;
 }
