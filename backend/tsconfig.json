@@ -16,7 +16,7 @@
     "noImplicitAny": false,
     "types": ["node"]
   },
-  "include": ["src/**/*", "../database/**/*", "../shared/**/*"],
+  "include": ["src/**/*", "database/**/*"],
   "exclude": ["node_modules", "dist"]
 }
 
