@@ -523,84 +523,44 @@ router.post('/', async (req, res) => {
     // Parse HTML and get metrics
     const metrics = await parseHTML(page, loadTime);
 
-    // Функция для создания адаптивного скриншота с постепенным снижением качества
-    const createAdaptiveScreenshot = async (maxSizeMB: number = 8): Promise<string> => {
+    // Функция для создания скриншота viewport (только видимая область - быстрее)
+    const createViewportScreenshot = async (maxSizeMB: number = 8): Promise<string> => {
       // Адаптируем настройки в зависимости от требуемого размера
       const isVerySmallLimit = maxSizeMB < 1; // Для очень малых лимитов (<1MB) используем очень агрессивные настройки
       const isSmallLimit = maxSizeMB <= 2; // Для малых лимитов (1-2MB) используем более агрессивные настройки
       
       let qualitySteps: number[];
       let widthSteps: number[];
-      let maxHeight: number;
       
       if (isVerySmallLimit) {
         // Очень агрессивные настройки для размеров <1MB
         qualitySteps = [30, 20, 15, 10];
         widthSteps = [800, 640, 480];
-        maxHeight = 1500;
       } else if (isSmallLimit) {
         // Агрессивные настройки для размеров 1-2MB
         qualitySteps = [60, 45, 35, 25];
         widthSteps = [1280, 1024, 800];
-        maxHeight = 2000;
       } else {
         // Стандартные настройки для больших размеров
         qualitySteps = [85, 75, 60, 45];
         widthSteps = [1600, 1280, 1024];
-        maxHeight = 3000;
       }
       
-      console.log('📸 Создаю адаптивный скриншот для AI анализа...');
+      console.log('📸 Создаю скриншот viewport для AI анализа (только видимая область)...');
       console.log('   Максимальный размер:', maxSizeMB, 'MB');
       const mode = isVerySmallLimit ? 'очень агрессивный (<1MB)' : isSmallLimit ? 'агрессивный (1-2MB)' : 'стандартный';
       console.log('   Режим:', mode);
       
-      // Сначала получаем размеры страницы для полного скриншота
-      const pageHeight = await page.evaluate(() => {
-        return Math.max(
-          document.body.scrollHeight,
-          document.body.offsetHeight,
-          document.documentElement.clientHeight,
-          document.documentElement.scrollHeight,
-          document.documentElement.offsetHeight
-        );
-      });
-      
-      console.log('   Высота страницы:', pageHeight, 'px');
-      
-      // Ограничиваем максимальную высоту для очень больших страниц (чтобы избежать падения сервера)
-      const MAX_SCREENSHOT_HEIGHT = 10000; // Максимум 10000px высоты
-      const shouldClip = pageHeight > MAX_SCREENSHOT_HEIGHT;
-      const screenshotHeight = shouldClip ? MAX_SCREENSHOT_HEIGHT : pageHeight;
-      
-      if (shouldClip) {
-        console.warn(`   ⚠️ Страница очень высокая (${pageHeight}px), ограничиваю до ${MAX_SCREENSHOT_HEIGHT}px для стабильности`);
-      }
-      
-      // Пробуем разные настройки качества
+      // Пробуем разные настройки качества (viewport скриншот - быстрее)
       for (const quality of qualitySteps) {
         console.log(`   Пробую качество ${quality}%...`);
         
-        const screenshotOptions: any = {
+        const screenshot = await page.screenshot({
           type: 'jpeg',
           quality: quality,
           encoding: 'base64',
-        };
-        
-        if (shouldClip) {
-          // Для очень больших страниц используем clip вместо fullPage
-          screenshotOptions.clip = {
-            x: 0,
-            y: 0,
-            width: widthSteps[0] || 1920,
-            height: screenshotHeight,
-          };
-        } else {
-          // Для обычных страниц используем fullPage
-          screenshotOptions.fullPage = true;
-        }
-        
-        const screenshot = await page.screenshot(screenshotOptions) as string;
+          // Без fullPage - только viewport (видимая область)
+        }) as string;
 
         // Проверяем размер base64 (примерно 4/3 от реального размера)
         const base64Size = screenshot.length;
@@ -696,12 +656,13 @@ router.post('/', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Создаем адаптивный скриншот для AI анализа (полная страница с автоматической оптимизацией)
-    const desktopScreenshotForAI = await createAdaptiveScreenshot(8); // Максимум 8MB
+    const desktopScreenshotForAI = await createViewportScreenshot(8); // Максимум 8MB - только viewport (быстрее)
 
     // Для отображения пользователю делаем полный скриншот страницы (PNG для лучшего качества)
+    // Скриншот viewport для отображения (быстрее, чем fullPage)
     const desktopScreenshotFull = await page.screenshot({
       type: 'png',
-      fullPage: true, // Полный скриншот всей страницы для отображения
+      // Без fullPage - только viewport (видимая область)
       encoding: 'base64',
     }) as string;
 
@@ -723,7 +684,7 @@ router.post('/', async (req, res) => {
 
     const screenshots = {
       desktop: `data:image/png;base64,${desktopScreenshotFull}`,
-      mobile: `data:image/png;base64,${desktopScreenshotFull}`, // Используем desktop скриншот для mobile (мобильный скриншот отключен)
+      mobile: `data:image/png;base64,${mobileScreenshot}`, // Используем мобильный viewport скриншот
     };
 
     // Analyze with Vision API (используем полный скриншот с адаптивным качеством)
@@ -774,7 +735,7 @@ router.post('/', async (req, res) => {
           
           for (const sizeMB of sizes) {
             console.log(`   Пробую создать скриншот размером до ${sizeMB}MB...`);
-            fallbackScreenshot = await createAdaptiveScreenshot(sizeMB);
+            fallbackScreenshot = await createViewportScreenshot(sizeMB);
             const estimatedSizeMB = (fallbackScreenshot.length * 3) / 4 / 1024 / 1024;
             console.log(`   Размер скриншота: ${estimatedSizeMB.toFixed(2)}MB`);
             
