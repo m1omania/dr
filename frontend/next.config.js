@@ -5,10 +5,12 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || '',
   },
   // Проксирование API запросов через Vercel для обхода Mixed Content
+  // Примечание: rewrites не работают для POST запросов, поэтому используем API routes
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://53893873b619.vps.myjino.ru:4001';
+    // Используем API_URL (серверная переменная) или NEXT_PUBLIC_API_URL как fallback
+    const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://53893873b619.vps.myjino.ru';
     
-    // Если указан полный URL, используем проксирование
+    // Если указан полный URL, используем проксирование (только для GET запросов)
     if (backendUrl.startsWith('http://') || backendUrl.startsWith('https://')) {
       return [
         {
