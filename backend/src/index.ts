@@ -14,9 +14,31 @@ initDatabase().catch(console.error);
 const app = express();
 const PORT = process.env.PORT || 4001;
 
+// CORS configuration - поддерживает несколько origins
+const allowedOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : ['http://localhost:4000', 'http://localhost:3000'];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:4000',
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (например, Postman, curl)
+    if (!origin) return callback(null, true);
+    
+    // Проверяем, есть ли origin в списке разрешенных
+    if (allowedOrigins.includes(origin) || allowedOrigins.some(allowed => origin?.includes(allowed))) {
+      callback(null, true);
+    } else {
+      // Для разработки разрешаем все vercel.app и localhost
+      if (origin.includes('vercel.app') || origin.includes('localhost')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Увеличиваем лимит размера тела запроса для загрузки изображений (50MB)
