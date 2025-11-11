@@ -284,24 +284,35 @@ export async function takeScreenshot(url: string): Promise<ScreenshotResult> {
     browser = await getBrowser();
     page = await browser.newPage();
 
+    // Block heavy resources to speed up load
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const resourceType = req.resourceType();
+      // Allow essential resources only
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font' || resourceType === 'stylesheet') {
+        return req.abort();
+      }
+      return req.continue();
+    });
+
     // Set viewport for desktop
     await page.setViewport({ width: 1920, height: 1080 });
     
     // Navigate to page with timeout
     const startTime = Date.now();
     await page.goto(normalizedUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 45000,
     });
     const loadTime = Date.now() - startTime;
 
     // Wait a bit for dynamic content
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Take desktop screenshot (full page)
+    // Take desktop screenshot (viewport only for speed)
     const desktopScreenshot = await page.screenshot({
       type: 'png',
-      fullPage: true, // Screenshot всей страницы
+      fullPage: false,
       encoding: 'base64',
     }) as string;
 
@@ -309,10 +320,10 @@ export async function takeScreenshot(url: string): Promise<ScreenshotResult> {
     await page.setViewport({ width: 375, height: 667 });
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Take mobile screenshot (full page)
+    // Take mobile screenshot (viewport only for speed)
     const mobileScreenshot = await page.screenshot({
       type: 'png',
-      fullPage: true, // Screenshot всей страницы
+      fullPage: false,
       encoding: 'base64',
     }) as string;
 
@@ -351,10 +362,20 @@ export async function getPageMetrics(url: string): Promise<{ loadTime: number; h
     browser = await getBrowser();
     page = await browser.newPage();
 
+    // Block heavy resources to speed up load
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const resourceType = req.resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font' || resourceType === 'stylesheet') {
+        return req.abort();
+      }
+      return req.continue();
+    });
+
     const startTime = Date.now();
     await page.goto(normalizedUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 45000,
     });
     const loadTime = Date.now() - startTime;
 
