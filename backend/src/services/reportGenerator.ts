@@ -31,11 +31,12 @@ export interface ReportGenerationInput {
     desktop: string;
     mobile: string;
   };
+  reportId?: string; // Опциональный ID отчета (если не передан, генерируется новый)
 }
 
 export function generateReport(input: ReportGenerationInput): AuditReport {
   console.log('🎯 generateReport вызвана');
-  const { url, metrics, visionAnalysis, screenshots } = input;
+  const { url, metrics, visionAnalysis, screenshots, reportId } = input;
   console.log('📦 Input получен, начинаю обработку...');
 
   // Используем ТОЛЬКО AI рекомендации из visionAnalysis
@@ -213,7 +214,7 @@ export function generateReport(input: ReportGenerationInput): AuditReport {
   }
 
   const report: AuditReport = {
-    id: uuidv4(),
+    id: reportId || uuidv4(),
     url,
     createdAt: new Date().toISOString(),
     categories,

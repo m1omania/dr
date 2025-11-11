@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Дизайн ревью",
+  title: "Дизайн аудит",
   description: "UX/UI аудит вашего сайта или изображения",
 };
 

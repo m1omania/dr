@@ -225,10 +225,14 @@ export async function analyzeScreenshotWithHuggingFace(base64Image: string): Pro
           description: 'Ошибка аутентификации Hugging Face. Проверьте токен в настройках.',
         };
       } else if (status === 403) {
-        console.error('   💡 Проблема с правами доступа');
+        console.error('   💡 Проблема с правами доступа (403 Forbidden)');
+        console.error('   💡 Возможные причины:');
+        console.error('      - Исчерпаны бесплатные кредиты inference');
+        console.error('      - Требуется подписка PRO для доступа к Router API');
+        console.error('      - Неверный токен или токен не имеет нужных прав');
         return {
           success: false,
-          description: 'Недостаточно прав доступа к Hugging Face Router API.',
+          description: 'Ошибка анализа (403)',
         };
       } else if (status === 400) {
         console.error('   💡 Неверный формат запроса');
@@ -244,10 +248,14 @@ export async function analyzeScreenshotWithHuggingFace(base64Image: string): Pro
           isSizeError: true, // Флаг для идентификации ошибки размера
         };
       } else if (status === 429) {
-        console.error('   💡 Превышен лимит запросов');
+        console.error('   💡 Превышен лимит запросов (Rate Limit)');
+        console.error('   💡 Возможные причины:');
+        console.error('      - Исчерпаны бесплатные кредиты inference');
+        console.error('      - Превышен лимит запросов в минуту');
+        console.error('      - Необходимо обновить подписку на PRO ($9/месяц)');
         return {
           success: false,
-          description: 'Превышен лимит запросов к Hugging Face Router API. Попробуйте позже.',
+          description: 'Ошибка анализа (429)',
         };
       } else if (status >= 500) {
         console.error('   💡 Внутренняя ошибка сервера Hugging Face');

@@ -117,7 +117,7 @@ export default function ScreenshotWithAnnotations({ screenshot, issues }: Screen
           src={screenshot}
           alt="Desktop скриншот"
           className="w-full h-auto rounded border border-gray-200"
-          style={{ maxHeight: '600px', objectFit: 'contain' }}
+          style={{ maxHeight: '400px', objectFit: 'contain' }}
         />
 
         {/* Аннотации на скриншоте */}

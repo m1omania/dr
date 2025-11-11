@@ -1021,6 +1021,11 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
         const sizeError = new Error('Request failed with status code 413: Image too large');
         (sizeError as any).isSizeError = true;
         throw sizeError;
+      } else if (!hf.success) {
+        // Если Hugging Face вернул ошибку (например, лимиты), выбрасываем ошибку с описанием
+        console.error('❌ Hugging Face Router API вернул ошибку:', hf.description);
+        const hfError = new Error(hf.description || 'Hugging Face Router API вернул ошибку');
+        throw hfError;
       }
     } catch (error: any) {
       // Если это ошибка размера, пробрасываем её дальше
@@ -1033,11 +1038,20 @@ export async function analyzeScreenshot(screenshotBase64: string): Promise<Visio
         console.error('❌ Hugging Face Router API: таймаут запроса (превышено время ожидания)');
         console.error('   Это может быть из-за большого размера изображения или медленного ответа API');
       } else if (error?.response?.status === 401 || error?.response?.status === 403) {
-        console.error('❌ Hugging Face Router API: ошибка аутентификации');
-        console.error('   Проверьте правильность HUGGINGFACE_API_KEY');
+        console.error('❌ Hugging Face Router API: ошибка аутентификации или прав доступа');
+        console.error('   💡 Возможные причины:');
+        console.error('      - Исчерпаны бесплатные кредиты inference');
+        console.error('      - Требуется подписка PRO для доступа к Router API');
+        console.error('      - Неверный токен или токен не имеет нужных прав');
+        console.error('   💡 Проверьте правильность HUGGINGFACE_API_KEY');
+        console.error('   💡 Ссылка на pricing: https://huggingface.co/pricing');
       } else if (error?.response?.status === 429) {
-        console.error('❌ Hugging Face Router API: превышен лимит запросов');
-        console.error('   Попробуйте позже или используйте другой API ключ');
+        console.error('❌ Hugging Face Router API: превышен лимит запросов (Rate Limit)');
+        console.error('   💡 Возможные причины:');
+        console.error('      - Исчерпаны бесплатные кредиты inference');
+        console.error('      - Превышен лимит запросов в минуту');
+        console.error('      - Необходимо обновить подписку на PRO ($9/месяц)');
+        console.error('   💡 Ссылка на pricing: https://huggingface.co/pricing');
       } else if (error?.response?.status >= 500) {
         console.error('❌ Hugging Face Router API: внутренняя ошибка сервера');
         console.error('   Сервис временно недоступен, попробуйте позже');

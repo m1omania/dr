@@ -24,6 +24,12 @@ export interface AuditReport {
     strengths: string[];
     weaknesses: string[];
   };
+  // Статус анализа для отображения прогресса
+  status?: {
+    stage: string;
+    message: string;
+    progress: number; // 0-100
+  };
 }
 
 export interface DetailedReport {

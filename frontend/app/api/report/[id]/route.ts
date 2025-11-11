@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Используем серверную переменную окружения (без NEXT_PUBLIC_) для безопасности
-const BACKEND_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://53893873b619.vps.myjino.ru:4001';
+const BACKEND_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 
+  (process.env.NODE_ENV === 'development' ? 'http://localhost:4001' : 'http://53893873b619.vps.myjino.ru:4001');
 
 export async function GET(
   request: NextRequest,

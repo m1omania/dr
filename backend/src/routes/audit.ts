@@ -7,6 +7,7 @@ import { getDb, initDatabase } from '../../database/db.js';
 import { chromium, type Browser, type Page } from 'playwright';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -374,105 +375,205 @@ router.post('/', async (req, res) => {
         }
       }
       
-      try {
-        const visionAnalysis = await analyzeScreenshot(imageDataUrl);
-        console.log('✅ Визуальный анализ завершен');
-        console.log('   Найдено проблем:', visionAnalysis.issues.length);
-        console.log('   Рекомендаций:', visionAnalysis.suggestions.length);
-        console.log('   Оценка:', visionAnalysis.overallScore);
+      // Создаем минимальные метрики для отчета (так как нет HTML)
+      const metrics = {
+        loadTime: 0,
+        hasViewport: false,
+        hasTitle: false,
+        fontSizes: {
+          minSize: 16,
+          maxSize: 16,
+          mainTextSize: 16,
+          issues: [],
+        },
+        contrast: {
+          issues: [],
+          score: 100,
+        },
+        ctas: {
+          count: 0,
+          issues: [],
+        },
+        responsive: false,
+      };
 
-        // Проверяем, не является ли это моковым результатом (если ИИ не сработал)
-        const isMockResult = visionAnalysis.visualDescription?.includes('Визуальный анализ недоступен') ||
-                            visionAnalysis.visualDescription?.includes('недоступны или не настроены') ||
-                            (visionAnalysis.issues.length === 1 && 
-                             typeof visionAnalysis.issues[0] === 'string' &&
-                             visionAnalysis.issues[0].includes('недоступен'));
+      const screenshots = {
+        desktop: imageDataUrl, // Используем загруженную картинку как скриншот
+        mobile: imageDataUrl, // Используем ту же картинку для мобильной версии
+      };
+
+      console.log('✅ Изображение готово, возвращаю его клиенту');
+      console.log('   Размер:', Math.round(imageDataUrl.length / 1024), 'KB');
+
+      // Сначала создаем отчет со скриншотами и пустым анализом
+      let initialVisionAnalysis: any = {
+        overallScore: 0,
+        issues: [],
+        suggestions: [],
+        visualDescription: 'AI анализ выполняется...',
+        freeFormAnalysis: '',
+      };
+
+      // Генерируем начальный отчет со скриншотами
+      let report = generateReport({
+        url: normalizedUrl,
+        metrics,
+        visionAnalysis: initialVisionAnalysis,
+        screenshots,
+      });
+
+      // Добавляем начальный статус - скриншоты готовы, начинаем AI анализ
+      report.status = {
+        stage: 'ai_analysis',
+        message: 'Анализируем дизайн с помощью AI...',
+        progress: 80,
+      };
+
+      // Сохраняем начальный отчет в БД
+      await db.run(
+        'INSERT OR REPLACE INTO reports (id, url, report_data) VALUES (?, ?, ?)',
+        [report.id, normalizedUrl, JSON.stringify(report)]
+      );
+
+      // Отправляем ответ клиенту со скриншотами сразу
+      res.json({ reportId: report.id, report });
+
+      // Теперь запускаем AI анализ асинхронно (не блокируя ответ)
+      setImmediate(async () => {
+        // Получаем db заново в асинхронном блоке
+        const asyncDb = getDb();
         
-        if (isMockResult) {
-          console.error('❌ Получен моковый результат - ИИ не сработал, возвращаю ошибку');
-          return res.status(500).json({
-            error: 'AI analysis failed',
-            message: 'Визуальный анализ через AI недоступен. Проверьте настройки API ключей (HUGGINGFACE_API_KEY или OPENAI_API_KEY).',
-          });
-        }
-
-        // Создаем минимальные метрики для отчета (так как нет HTML)
-        const metrics = {
-          loadTime: 0,
-          hasViewport: false,
-          hasTitle: false,
-          fontSizes: {
-            minSize: 16,
-            maxSize: 16,
-            mainTextSize: 16,
-            issues: [],
-          },
-          contrast: {
-            issues: [],
-            score: 100,
-          },
-          ctas: {
-            count: 0,
-            issues: [],
-          },
-          responsive: false,
+        const updateStatusAsync = async (stage: string, message: string, progress: number) => {
+          try {
+            console.log(`🔄 Обновляю статус: [${progress}%] ${stage} - ${message} (reportId: ${report.id})`);
+            const existingReport = await asyncDb.get<{ report_data: string }>(
+              'SELECT report_data FROM reports WHERE id = ?',
+              [report.id]
+            );
+            
+            if (existingReport) {
+              const reportData = JSON.parse(existingReport.report_data);
+              reportData.status = { stage, message, progress };
+              await asyncDb.run(
+                'UPDATE reports SET report_data = ? WHERE id = ?',
+                [JSON.stringify(reportData), report.id]
+              );
+              console.log(`✅ Статус обновлен: [${progress}%] ${stage} - ${message}`);
+            }
+          } catch (statusError) {
+            console.error('❌ Ошибка при обновлении статуса:', statusError);
+          }
         };
-
-        const screenshots = {
-          desktop: imageDataUrl, // Используем загруженную картинку как скриншот
-          mobile: imageDataUrl, // Используем ту же картинку для мобильной версии
-        };
-
-        // Generate report
-        const report = generateReport({
-          url: normalizedUrl,
-          metrics,
-          visionAnalysis,
-          screenshots,
-        });
-
-        // Save report to database
-        await db.run(
-          'INSERT INTO reports (id, url, report_data) VALUES (?, ?, ?)',
-          [report.id, normalizedUrl, JSON.stringify(report)]
-        );
-
-        return res.json({ reportId: report.id, report });
-      } catch (visionError) {
-        console.error('❌ Ошибка при анализе изображения:', visionError);
-        if (visionError instanceof Error) {
-          console.error('   Message:', visionError.message);
-          console.error('   Stack:', visionError.stack?.substring(0, 500));
+        
+        try {
+          // Обновляем статус: общий обзор
+          await updateStatusAsync('ai_analysis', 'Проводим общий обзор дизайна...', 82);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Небольшая задержка для визуализации
           
-          // Если ошибка связана с размером изображения (413), возвращаем понятное сообщение
-          if (visionError.message.includes('413') || 
-              visionError.message.includes('too large') || 
-              visionError.message.includes('request entity too large')) {
-            return res.status(413).json({
-              error: 'Image too large',
-              message: 'Изображение слишком большое для анализа. Пожалуйста, уменьшите размер изображения до 1MB или меньше перед загрузкой.',
-              hint: 'Попробуйте сжать изображение или уменьшить его разрешение.',
-            });
+          console.log('📸 Начинаю визуальный анализ изображения (асинхронно)...');
+          const visionAnalysis = await analyzeScreenshot(imageDataUrl);
+          console.log('✅ Визуальный анализ завершен (асинхронно)');
+          console.log('   Найдено проблем:', visionAnalysis.issues.length);
+          console.log('   Рекомендаций:', visionAnalysis.suggestions.length);
+          console.log('   Оценка:', visionAnalysis.overallScore);
+
+          // Обновляем статус: выявляем сильные стороны
+          await updateStatusAsync('ai_analysis', 'Выявляем сильные стороны...', 88);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Небольшая задержка для визуализации
+
+          // Проверяем, не является ли это моковым результатом
+          const isMockResult = visionAnalysis.visualDescription?.includes('Визуальный анализ недоступен') ||
+                              visionAnalysis.visualDescription?.includes('недоступны или не настроены') ||
+                              (visionAnalysis.issues.length === 1 && 
+                               typeof visionAnalysis.issues[0] === 'string' &&
+                               visionAnalysis.issues[0].includes('недоступен'));
+          
+          let finalVisionAnalysis = visionAnalysis;
+          if (isMockResult) {
+            console.warn('⚠️  Получен моковый результат - ИИ не сработал, создаю пустой анализ');
+            finalVisionAnalysis = {
+              overallScore: 0,
+              issues: [],
+              suggestions: [],
+              visualDescription: 'AI анализ недоступен. Изображение доступно для просмотра.',
+              freeFormAnalysis: '',
+            };
           }
-        }
-        throw visionError; // Пробрасываем ошибку дальше для общей обработки
-      } finally {
-        // Закрываем браузер, если он был открыт для уменьшения изображения
-        if (page) {
+
+          // Обновляем статус: определяем проблемы
+          await updateStatusAsync('ai_analysis', 'Определяем проблемы и области для улучшения...', 92);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Небольшая задержка для визуализации
+
+          // Обновляем статус: финализация отчета
+          await updateStatusAsync('finalizing', 'Формируем финальный отчет...', 95);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Небольшая задержка для визуализации
+
+          // Обновляем отчет с результатами AI анализа
+          const updatedReport = generateReport({
+            url: normalizedUrl,
+            metrics,
+            visionAnalysis: finalVisionAnalysis,
+            screenshots,
+            reportId: report.id, // Используем тот же ID
+          });
+
+          // Обновляем статус: завершено
+          updatedReport.status = {
+            stage: 'completed',
+            message: 'Анализ завершен',
+            progress: 100,
+          };
+
+          // Небольшая задержка перед финальным статусом, чтобы пользователь увидел процесс
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // Обновляем статус в БД отдельно (чтобы polling сразу увидел обновление)
+          await updateStatusAsync('completed', 'Анализ завершен', 100);
+
+          // Обновляем отчет в БД (уже содержит статус completed)
+          await asyncDb.run(
+            'UPDATE reports SET report_data = ? WHERE id = ?',
+            [JSON.stringify(updatedReport), report.id]
+          );
+
+          console.log(`✅ Финальный отчет обновлен (reportId: ${report.id})`);
+        } catch (visionError: any) {
+          console.error('❌ Ошибка при асинхронном анализе изображения:', visionError.message);
+          console.error('   Stack:', visionError.stack);
+          
+          // Показываем промежуточный статус перед завершением
+          await updateStatusAsync('ai_analysis', 'Обрабатываем результаты...', 90);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка, чтобы пользователь увидел процесс
+          
+          // Даже при ошибке обновляем статус до completed, чтобы пользователь видел результат
           try {
-            await page.close();
-          } catch (e) {
-            // Игнорируем ошибки при закрытии
+            await updateStatusAsync('completed', 'Анализ завершен (частичный результат)', 100);
+            
+            const existingReport = await asyncDb.get<{ report_data: string }>(
+              'SELECT report_data FROM reports WHERE id = ?',
+              [report.id]
+            );
+            
+            if (existingReport) {
+              const reportData = JSON.parse(existingReport.report_data);
+              reportData.status = {
+                stage: 'completed',
+                message: 'Анализ завершен (частичный результат)',
+                progress: 100,
+              };
+              await asyncDb.run(
+                'UPDATE reports SET report_data = ? WHERE id = ?',
+                [JSON.stringify(reportData), report.id]
+              );
+              console.log(`✅ Статус обновлен до completed (частичный результат) для reportId: ${report.id}`);
+            }
+          } catch (statusError) {
+            console.error('❌ Ошибка при обновлении статуса после ошибки анализа:', statusError);
           }
         }
-        if (browser) {
-          try {
-            await browser.close();
-          } catch (e) {
-            // Игнорируем ошибки при закрытии
-          }
-        }
-      }
+      });
+      
+      return; // Завершаем обработку запроса
     }
 
     // Обработка URL (существующая логика)
@@ -597,15 +698,59 @@ router.post('/', async (req, res) => {
     // Playwright использует page.route() вместо setRequestInterception
     await page.route('**/*', (route) => {
       const resourceType = route.request().resourceType();
-      // Блокируем: images, media, fonts. Разрешаем: document, script, xhr/fetch, stylesheet
-      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+      // Блокируем только media и fonts. Разрешаем images для скриншота, document, script, xhr/fetch, stylesheet
+      if (resourceType === 'media' || resourceType === 'font') {
         return route.abort();
       }
       return route.continue();
     });
 
+    // Генерируем reportId заранее для обновления статуса
+    const reportId = uuidv4();
+    
+    // Функция для обновления статуса анализа
+    const updateStatus = async (stage: string, message: string, progress: number) => {
+      try {
+        // Получаем текущий отчет из БД
+        const existingReport = await db.get<{ report_data: string }>(
+          'SELECT report_data FROM reports WHERE id = ?',
+          [reportId]
+        );
+        
+        if (existingReport) {
+          const reportData = JSON.parse(existingReport.report_data);
+          reportData.status = { stage, message, progress };
+          await db.run(
+            'UPDATE reports SET report_data = ? WHERE id = ?',
+            [JSON.stringify(reportData), reportId]
+          );
+        } else {
+          // Если отчета еще нет, создаем временный
+          const tempReport = {
+            id: reportId,
+            url: normalizedUrl,
+            createdAt: new Date().toISOString(),
+            categories: [],
+            recommendations: [],
+            metrics: {} as any,
+            status: { stage, message, progress },
+          };
+          await db.run(
+            'INSERT OR REPLACE INTO reports (id, url, report_data) VALUES (?, ?, ?)',
+            [reportId, normalizedUrl, JSON.stringify(tempReport)]
+          );
+        }
+        console.log(`📊 Статус: [${progress}%] ${stage} - ${message}`);
+      } catch (error) {
+        console.error('❌ Ошибка при обновлении статуса:', error);
+      }
+    };
+
     // Get page metrics and HTML
     const startTime = Date.now();
+    
+    // Обновляем статус: загрузка страницы
+    await updateStatus('loading', 'Загружаем страницу...', 10);
 
     // Увеличиваем таймаут для медленных сайтов и используем более мягкую стратегию ожидания
     // Для очень медленных сайтов используем более мягкую стратегию сразу
@@ -647,7 +792,8 @@ router.post('/', async (req, res) => {
           await page.setViewportSize({ width: 1920, height: 1080 });
           await page.route('**/*', (route) => {
             const resourceType = route.request().resourceType();
-            if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+            // Разрешаем изображения для скриншота
+            if (resourceType === 'media' || resourceType === 'font') {
               return route.abort();
             }
             return route.continue();
@@ -721,8 +867,20 @@ router.post('/', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     console.log('✅ Страница готова к скриншоту');
 
+    // Обновляем статус: анализ метрик
+    await updateStatus('metrics', 'Анализируем скорость загрузки...', 30);
+    
     // Parse HTML and get metrics
     const metrics = await parseHTML(page, loadTime);
+    
+    // Обновляем статус: анализ типографики
+    await updateStatus('typography', 'Анализируем типографику...', 40);
+    
+    // Обновляем статус: анализ контраста
+    await updateStatus('contrast', 'Анализируем контраст и цвета...', 50);
+    
+    // Обновляем статус: анализ CTA
+    await updateStatus('cta', 'Анализируем призывы к действию...', 60);
 
     // Функция для создания скриншота viewport (только видимая область - быстрее)
     const createViewportScreenshot = async (maxSizeMB: number = 8): Promise<string> => {
@@ -863,108 +1021,53 @@ router.post('/', async (req, res) => {
       mobile: `data:image/png;base64,${mobileScreenshot}`, // Используем мобильный viewport скриншот
     };
 
-    // Analyze with Vision API (используем полный скриншот с адаптивным качеством)
-    console.log('📸 Начинаю визуальный анализ скриншота...');
-    console.log('   Использую полный скриншот страницы (адаптивное качество)');
-    console.log('   Размер скриншота:', desktopScreenshotForAI.length, 'символов (base64)');
-    
-    let visionAnalysis: any;
-    try {
-      visionAnalysis = await analyzeScreenshot(`data:image/jpeg;base64,${desktopScreenshotForAI}`);
-      console.log('✅ Визуальный анализ завершен');
-      console.log('   Найдено проблем:', visionAnalysis.issues.length);
-      console.log('   Рекомендаций:', visionAnalysis.suggestions.length);
-      console.log('   Оценка:', visionAnalysis.overallScore);
-      console.log('   Visual Description:', visionAnalysis.visualDescription ? `есть (${visionAnalysis.visualDescription.length} символов)` : 'отсутствует');
-      console.log('   Free Form Analysis:', visionAnalysis.freeFormAnalysis ? `есть (${visionAnalysis.freeFormAnalysis.length} символов)` : 'отсутствует');
-      
-      // Проверяем, не является ли это моковым результатом (если ИИ не сработал)
-      const isMockResult = visionAnalysis?.visualDescription?.includes('Визуальный анализ недоступен') ||
-                          visionAnalysis?.visualDescription?.includes('недоступны или не настроены') ||
-                          (visionAnalysis?.issues?.length === 1 && 
-                           typeof visionAnalysis.issues[0] === 'string' &&
-                           visionAnalysis.issues[0].includes('недоступен'));
-      
-      if (isMockResult) {
-        console.error('❌ Получен моковый результат - ИИ не сработал, выбрасываю ошибку');
-        throw new Error('Визуальный анализ через AI недоступен. Проверьте настройки API ключей (HUGGINGFACE_API_KEY или OPENAI_API_KEY).');
-      }
-      
-      // Проверяем, что анализ действительно выполнился
-      if (!visionAnalysis || (visionAnalysis.overallScore === 0 && !visionAnalysis.visualDescription && !visionAnalysis.freeFormAnalysis)) {
-        console.warn('⚠️  Анализ вернул пустой результат, возможно была ошибка');
-        console.warn('   Проверяю, нужно ли повторить анализ...');
-      }
-    } catch (error: any) {
-      console.error('❌ Ошибка при анализе скриншота:', error.message);
-      console.error('   Error type:', error.constructor.name);
-      console.error('   isSizeError:', error.isSizeError);
-      
-      // Если ошибка связана с размером, пробуем еще раз с меньшим качеством
-      if (error.isSizeError || error.message?.includes('size') || error.message?.includes('too large') || error.message?.includes('413')) {
-        console.log('   ⚠️ Изображение слишком большое (413), пробую создать скриншот с меньшим размером...');
-        
-        try {
-          // Пробуем с более агрессивными настройками - уменьшаем размер постепенно
-          let fallbackScreenshot: string | null = null;
-          const sizes = [4, 3, 2, 1, 0.5, 0.3]; // Пробуем размеры от 4MB до 0.3MB
-          
-          for (const sizeMB of sizes) {
-            console.log(`   Пробую создать скриншот размером до ${sizeMB}MB...`);
-            fallbackScreenshot = await createViewportScreenshot(sizeMB);
-            const estimatedSizeMB = (fallbackScreenshot.length * 3) / 4 / 1024 / 1024;
-            console.log(`   Размер скриншота: ${estimatedSizeMB.toFixed(2)}MB`);
-            
-            try {
-              visionAnalysis = await analyzeScreenshot(`data:image/jpeg;base64,${fallbackScreenshot}`);
-              console.log('✅ Визуальный анализ завершен (с пониженным качеством)');
-              break; // Успешно проанализировали
-            } catch (retryError: any) {
-              if (retryError.isSizeError || retryError.message?.includes('413') || retryError.message?.includes('too large')) {
-                console.log(`   Размер ${sizeMB}MB все еще слишком большой, пробую меньше...`);
-                continue; // Пробуем следующий размер
-              } else {
-                throw retryError; // Другая ошибка - пробрасываем дальше
-              }
-            }
-          }
-          
-          if (!visionAnalysis) {
-            // Если даже с минимальным размером не получилось, возвращаем понятную ошибку
-            const sizeError = new Error('Изображение слишком большое для анализа. Даже после агрессивного сжатия размер превышает лимит API (~1MB).');
-            (sizeError as any).isSizeError = true;
-            throw sizeError;
-          }
-        } catch (retryError: any) {
-          console.error('❌ Не удалось проанализировать даже с минимальным размером:', retryError.message);
-          throw retryError; // Пробрасываем ошибку дальше
-        }
-      } else {
-        throw error; // Пробрасываем ошибку дальше, если это не проблема размера
-      }
-    }
+    console.log('✅ Скриншоты созданы, возвращаю их клиенту');
+    console.log('   Desktop:', Math.round(desktopScreenshotFull.length / 1024), 'KB');
+    console.log('   Mobile:', Math.round(mobileScreenshot.length / 1024), 'KB');
 
-    // Generate report
-    const report = generateReport({
+    // Сначала создаем отчет со скриншотами и пустым анализом
+    let visionAnalysis: any = {
+      overallScore: 0,
+      issues: [],
+      suggestions: [],
+      visualDescription: 'AI анализ выполняется...',
+      freeFormAnalysis: '',
+    };
+
+    // Генерируем начальный отчет со скриншотами
+    let report = generateReport({
       url: normalizedUrl,
       metrics,
       visionAnalysis,
       screenshots,
+      reportId, // Используем тот же ID
     });
+    
+    // Добавляем начальный статус - скриншоты готовы, начинаем AI анализ
+    report.status = {
+      stage: 'ai_analysis',
+      message: 'Анализируем дизайн с помощью AI...',
+      progress: 80,
+    };
+    
+    // Обновляем статус в БД
+    await updateStatus('ai_analysis', 'Анализируем дизайн с помощью AI...', 80);
 
-    // Save report to database
+    // Сохраняем начальный отчет в БД
     await db.run(
-      'INSERT INTO reports (id, url, report_data) VALUES (?, ?, ?)',
+      'INSERT OR REPLACE INTO reports (id, url, report_data) VALUES (?, ?, ?)',
       [report.id, normalizedUrl, JSON.stringify(report)]
     );
 
-    // Принудительно закрываем браузер после успешного запроса для освобождения ресурсов
+    // Отправляем ответ клиенту со скриншотами сразу
+    res.json({ reportId: report.id, report });
+
+    // Закрываем браузер перед запуском AI анализа (освобождаем ресурсы)
     try {
       if (page) {
         await page.close().catch(() => {});
       }
       if (browser) {
-        // В Playwright закрываем все контексты (которые содержат страницы)
         const contexts = browser.contexts();
         await Promise.all(contexts.map(ctx => ctx.close().catch(() => {})));
         await browser.close().catch(() => {});
@@ -972,8 +1075,151 @@ router.post('/', async (req, res) => {
     } catch (closeError) {
       console.warn('⚠️  Ошибка при закрытии браузера:', closeError);
     }
+    browser = null;
+    page = null;
 
-    res.json({ reportId: report.id, report });
+    // Теперь запускаем AI анализ асинхронно (не блокируя ответ)
+    // Используем setImmediate для запуска после отправки ответа
+    setImmediate(async () => {
+      // Получаем db заново в асинхронном блоке
+      const asyncDb = getDb();
+      
+      // Функция для обновления статуса в асинхронном блоке
+      const updateStatusAsync = async (stage: string, message: string, progress: number) => {
+        try {
+          console.log(`🔄 Обновляю статус: [${progress}%] ${stage} - ${message} (reportId: ${reportId})`);
+          const existingReport = await asyncDb.get<{ report_data: string }>(
+            'SELECT report_data FROM reports WHERE id = ?',
+            [reportId]
+          );
+          
+          if (existingReport) {
+            const reportData = JSON.parse(existingReport.report_data);
+            reportData.status = { stage, message, progress };
+            await asyncDb.run(
+              'UPDATE reports SET report_data = ? WHERE id = ?',
+              [JSON.stringify(reportData), reportId]
+            );
+            console.log(`✅ Статус обновлен: [${progress}%] ${stage} - ${message}`);
+          } else {
+            console.warn(`⚠️  Отчет не найден для обновления статуса (reportId: ${reportId})`);
+          }
+        } catch (error) {
+          console.error('❌ Ошибка при обновлении статуса (async):', error);
+        }
+      };
+      
+      try {
+        console.log('📸 Начинаю визуальный анализ скриншота (асинхронно)...');
+        console.log('   Использую полный скриншот страницы (адаптивное качество)');
+        console.log('   Размер скриншота:', desktopScreenshotForAI.length, 'символов (base64)');
+        
+        // Обновляем статус: общий обзор
+        await updateStatusAsync('ai_analysis', 'Проводим общий обзор дизайна...', 82);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Небольшая задержка для визуализации
+        
+        let finalVisionAnalysis = await analyzeScreenshot(`data:image/jpeg;base64,${desktopScreenshotForAI}`);
+        console.log('✅ Визуальный анализ завершен (асинхронно)');
+        console.log('   Найдено проблем:', finalVisionAnalysis.issues.length);
+        console.log('   Рекомендаций:', finalVisionAnalysis.suggestions.length);
+        console.log('   Оценка:', finalVisionAnalysis.overallScore);
+        
+        // Проверяем, не является ли это моковым результатом
+        const isMockResult = finalVisionAnalysis?.visualDescription?.includes('Визуальный анализ недоступен') ||
+                            finalVisionAnalysis?.visualDescription?.includes('недоступны или не настроены') ||
+                            (finalVisionAnalysis?.issues?.length === 1 && 
+                             typeof finalVisionAnalysis.issues[0] === 'string' &&
+                             finalVisionAnalysis.issues[0].includes('недоступен'));
+        
+        if (isMockResult) {
+          console.warn('⚠️  Получен моковый результат - ИИ не сработал, создаю пустой анализ');
+          finalVisionAnalysis = {
+            overallScore: 0,
+            issues: [],
+            suggestions: [],
+            visualDescription: 'AI анализ недоступен. Скриншот сайта доступен для просмотра.',
+            freeFormAnalysis: '',
+          };
+        }
+        
+        // Обновляем статус: выявляем сильные стороны
+        await updateStatusAsync('ai_analysis', 'Выявляем сильные стороны...', 88);
+        
+        // Небольшая задержка для визуализации прогресса
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Обновляем статус: определяем проблемы
+        await updateStatusAsync('ai_analysis', 'Определяем проблемы и области для улучшения...', 92);
+        
+        // Небольшая задержка для визуализации прогресса
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Обновляем статус: финализация отчета
+        await updateStatusAsync('finalizing', 'Формируем финальный отчет...', 95);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Небольшая задержка для визуализации
+        
+        // Обновляем отчет с результатами AI анализа
+        const updatedReport = generateReport({
+          url: normalizedUrl,
+          metrics,
+          visionAnalysis: finalVisionAnalysis,
+          screenshots,
+          reportId, // Используем тот же ID
+        });
+        
+        // Обновляем статус: завершено
+        updatedReport.status = {
+          stage: 'completed',
+          message: 'Анализ завершен',
+          progress: 100,
+        };
+
+        // Небольшая задержка перед финальным статусом, чтобы пользователь увидел процесс
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Обновляем статус в БД отдельно (чтобы polling сразу увидел обновление)
+        await updateStatusAsync('completed', 'Анализ завершен', 100);
+
+        // Обновляем отчет в БД (уже содержит статус completed)
+        await asyncDb.run(
+          'UPDATE reports SET report_data = ? WHERE id = ?',
+          [JSON.stringify(updatedReport), reportId]
+        );
+        console.log(`✅ Финальный отчет обновлен (reportId: ${reportId})`);
+      } catch (error: any) {
+        console.error('❌ Ошибка при асинхронном анализе скриншота:', error.message);
+        console.error('   Stack:', error.stack);
+        
+        // Даже при ошибке обновляем статус до completed, чтобы пользователь видел результат
+        // (скриншоты уже отправлены, можно показать частичный отчет)
+        try {
+          await updateStatusAsync('completed', 'Анализ завершен (частичный результат)', 100);
+          
+          // Обновляем отчет с частичными данными (без AI анализа)
+          const asyncDb = getDb();
+          const existingReport = await asyncDb.get<{ report_data: string }>(
+            'SELECT report_data FROM reports WHERE id = ?',
+            [reportId]
+          );
+          
+          if (existingReport) {
+            const reportData = JSON.parse(existingReport.report_data);
+            reportData.status = {
+              stage: 'completed',
+              message: 'Анализ завершен (частичный результат)',
+              progress: 100,
+            };
+            await asyncDb.run(
+              'UPDATE reports SET report_data = ? WHERE id = ?',
+              [JSON.stringify(reportData), reportId]
+            );
+            console.log(`✅ Статус обновлен до completed (частичный результат) для reportId: ${reportId}`);
+          }
+        } catch (statusError) {
+          console.error('❌ Ошибка при обновлении статуса после ошибки анализа:', statusError);
+        }
+      }
+    });
   } catch (error) {
     console.error('❌ Audit error:', error);
     if (error instanceof Error) {

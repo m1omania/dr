@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import type { AuditReport } from '@/src/types';
-import ScreenshotWithAnnotations from './ScreenshotWithAnnotations';
 import UXScoreChart from './UXScoreChart';
 import PrincipleTooltip, { parseTextWithPrinciples } from './PrincipleTooltip';
 
@@ -12,11 +11,6 @@ interface ReportDisplayProps {
 
 export default function ReportDisplay({ report }: ReportDisplayProps) {
   const [copied, setCopied] = useState(false);
-  
-  // Собираем все issues с координатами из всех категорий для отображения на скриншоте
-  const allIssuesWithBbox = report.categories
-    .flatMap(category => category.issues)
-    .filter(issue => issue.bbox && Array.isArray(issue.bbox) && issue.bbox.length === 4);
 
   // Функция для копирования текста анализа
   const handleCopyAnalysis = async () => {
@@ -50,26 +44,23 @@ export default function ReportDisplay({ report }: ReportDisplayProps) {
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
-      {/* UX Score Breakdown */}
+      {/* Скриншот сайта (первым) */}
+      {report.screenshots && report.screenshots.desktop && (
+        <div className="max-w-3xl mx-auto">
+          <img
+            src={report.screenshots.desktop}
+            alt="Desktop скриншот"
+            className="w-full h-auto"
+            style={{ maxHeight: '400px', objectFit: 'contain' }}
+          />
+        </div>
+      )}
+
+      {/* UX Score Breakdown (график) */}
       {report.summary && report.summary.overallScore > 0 && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-xl font-semibold mb-4">UX Score Breakdown</h3>
           <UXScoreChart report={report} />
-        </div>
-      )}
-
-      {/* Скриншот сайта */}
-      {report.screenshots && report.screenshots.desktop && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-xl font-semibold mb-4">Скриншот сайта</h3>
-          <div className="border rounded-lg overflow-hidden shadow-sm">
-            <div className="bg-gray-50 p-2">
-              <ScreenshotWithAnnotations
-                screenshot={report.screenshots.desktop}
-                issues={allIssuesWithBbox}
-              />
-            </div>
-          </div>
         </div>
       )}
 
@@ -265,7 +256,7 @@ export default function ReportDisplay({ report }: ReportDisplayProps) {
 
       {/* Предупреждение об AI */}
       <div className="mt-6 text-center text-sm text-gray-600">
-        <p>AI can make mistakes, so double-check it.</p>
+        <p>ИИ может допускать ошибки, поэтому проверьте информацию.</p>
       </div>
     </div>
   );
