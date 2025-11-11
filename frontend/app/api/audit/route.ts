@@ -10,9 +10,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📥 API route: получен запрос', { url: body.url, hasImage: !!body.image });
     
-    // Увеличиваем таймаут для больших запросов (анализ сайта может занять время)
+    // Увеличиваем таймаут для больших запросов (анализ сайта/изображения может занять время)
+    // Для изображений с автоматическим сжатием может потребоваться до 4 минут
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 минуты
+    const timeoutId = setTimeout(() => controller.abort(), 240000); // 4 минуты
     
     try {
       console.log('🔄 API route: отправляю запрос на backend', BACKEND_URL);
