@@ -210,6 +210,25 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-6xl mx-auto">
+        {/* Меню (показываем только на шаге 1) */}
+        {step === 1 && (
+          <div className="mb-8">
+            <div className="flex justify-center gap-4 border-b border-gray-200">
+              <button
+                className="px-6 py-3 text-lg font-medium text-blue-600 border-b-2 border-blue-600 transition-colors"
+              >
+                Дизайн Аудит
+              </button>
+              <a
+                href="/complexity"
+                className="px-6 py-3 text-lg font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Анализ сложности
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Header (показываем только на шаге 1) */}
         {step === 1 && (
           <div className="text-center mb-12">
@@ -310,7 +329,7 @@ export default function Home() {
             )}
 
             {/* Error Display на шаге 2 */}
-            {error && (
+        {error && (
               <div className="mb-8 bg-red-50 border border-red-200 rounded-lg p-6">
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
@@ -404,14 +423,14 @@ export default function Home() {
             </div>
 
             {/* Полный отчет */}
-            <div className="space-y-8">
-              <ReportDisplay report={report} />
-              <div className="max-w-2xl mx-auto">
-                <LeadForm
-                  reportId={reportId}
-                  onSuccess={handleLeadSuccess}
-                  onError={handleError}
-                />
+          <div className="space-y-8">
+            <ReportDisplay report={report} />
+            <div className="max-w-2xl mx-auto">
+              <LeadForm
+                reportId={reportId}
+                onSuccess={handleLeadSuccess}
+                onError={handleError}
+              />
               </div>
             </div>
           </div>
