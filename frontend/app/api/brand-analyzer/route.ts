@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
-// @ts-ignore - node-vibrant types may not be available
-// import Vibrant from 'node-vibrant'; // Temporarily disabled
+
+// Explicitly mark this route as dynamic
+export const dynamic = 'force-dynamic';
 
 interface BrandAnalysisResult {
   url: string;
@@ -71,31 +72,12 @@ function extractColorsFromCSS(cssText: string): string[] {
 }
 
 async function extractColorsFromImage(imageUrl: string): Promise<string[]> {
+  // Temporarily disabled - node-vibrant is not available
+  // TODO: Re-enable when node-vibrant is properly configured or use alternative library
   try {
-    const response = await axios.get(imageUrl, { 
-      responseType: 'arraybuffer', 
-      timeout: 5000,
-      maxContentLength: 10 * 1024 * 1024, // 10MB max
-      maxBodyLength: 10 * 1024 * 1024
-    });
-    const buffer = Buffer.from(response.data);
-    
-    // Check if buffer is valid image
-    if (buffer.length === 0) {
-      return [];
-    }
-    
-    const palette = await Vibrant.fromBuffer(buffer).getPalette();
-    
-    const colors: string[] = [];
-    if (palette?.Vibrant) colors.push(palette.Vibrant.hex);
-    if (palette?.Muted) colors.push(palette.Muted.hex);
-    if (palette?.DarkVibrant) colors.push(palette.DarkVibrant.hex);
-    if (palette?.DarkMuted) colors.push(palette.DarkMuted.hex);
-    if (palette?.LightVibrant) colors.push(palette.LightVibrant.hex);
-    if (palette?.LightMuted) colors.push(palette.LightMuted.hex);
-    
-    return colors;
+    // Временно отключено из-за проблем с node-vibrant в Next.js API routes
+    // Можно использовать альтернативные библиотеки для извлечения цветов из изображений
+    return [];
   } catch (error) {
     console.error('Error extracting colors from image:', error);
     return [];

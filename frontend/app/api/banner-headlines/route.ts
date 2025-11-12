@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Explicitly mark this route as dynamic
+export const dynamic = 'force-dynamic';
+
 // Шаблоны заголовков для генерации
 const HEADLINE_TEMPLATES = [
   'Улучшите свой {activity}',
